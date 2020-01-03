@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Testing the localstack cloudformation stack'
+Parameters:
+  BucketPrefix:
+    Type: String
+    Default: demo-bucket
+Resources:
+  DemoBucket:
+    DependsOn: LambdaInvokePermission
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${BucketPrefix}-localstack-service'
+      NotificationConfiguration:
+        LambdaConfigurations:
+        - Event: "s3:ObjectCreated:*"
+          Function: !GetAtt S3TriggeredLambda.Arn
+          
+  S3TriggeredLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      MemorySize: 256
+      Timeout: 10
+      Runtime: python3.6
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Handler: function.lambda_handler
+      Code:
+        S3Bucket: localstack-testing
+        S3Key: function.py.zip
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt 
+        - S3TriggeredLambda
+        - Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Join 
+        - ''
+        - - 'arn:aws:s3:::'
+          - !Sub '${BucketPrefix}-localstack-service'
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal: {Service: [lambda.amazonaws.com]}
+          Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+      - PolicyName: S3Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 's3:PutObject'
+                - 'S3:DeleteObject'
+              Resource: !Sub "arn:aws:s3:::${BucketPrefix}-localstack-service/*"
+            - Effect: Allow
+              Action:
+                - 's3:GetObject'
+                - 'S3:ListBucket'
+              Resource: 
+                - !Sub "arn:aws:s3:::localstack-testing/*"
+                - !Sub "arn:aws:s3:::localstack-testing"
